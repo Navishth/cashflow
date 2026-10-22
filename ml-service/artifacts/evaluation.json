@@ -1,0 +1,43 @@
+{
+  "dataSource": "synthetic; seed 42; not bank data",
+  "modelVersion": "synthetic-hgbr-v1-1374d58a72f2",
+  "target": "Daily unplanned inflows minus unplanned outflows; excludes scheduled receipts and recurring commitments",
+  "training": {
+    "start": "2022-01-29",
+    "end": "2023-12-31",
+    "rows": 702
+  },
+  "validation": {
+    "start": "2024-01-01",
+    "end": "2024-06-28",
+    "candidate": {
+      "mae": 304.84,
+      "rmse": 490.15,
+      "bias": -25.02
+    },
+    "weekdayBaseline": {
+      "mae": 324.85,
+      "rmse": 516.69,
+      "bias": -63.68
+    },
+    "evaluatedDays": 180
+  },
+  "test": {
+    "start": "2024-06-29",
+    "end": "2024-12-30",
+    "candidate": {
+      "mae": 338.24,
+      "rmse": 674.43,
+      "bias": -29.15
+    },
+    "weekdayBaseline": {
+      "mae": 341.91,
+      "rmse": 667.78,
+      "bias": 85.18
+    },
+    "evaluatedDays": 180
+  },
+  "selection": "candidate",
+  "protocol": "Non-overlapping recursive 30-day origins; no future actuals used inside each horizon. No refit on validation/test.",
+  "limitation": "Synthetic demonstration only. Real accounts use a historical baseline. No calibrated uncertainty intervals."
+}

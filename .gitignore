@@ -1,0 +1,17 @@
+.local/
+.env
+!.env.example
+node_modules/
+dist/
+target/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.tsbuildinfo
+ml-service/artifacts/*.joblib
+data/generated/
+*.log
+.DS_Store
+frontend/test-results/
+frontend/playwright-report/

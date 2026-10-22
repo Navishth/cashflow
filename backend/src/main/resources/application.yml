@@ -1,0 +1,69 @@
+server:
+  port: ${PORT:8080}
+  address: ${BIND_ADDRESS:127.0.0.1}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        name: CFTSESSION
+        http-only: true
+        secure: ${COOKIE_SECURE:false}
+        same-site: lax
+spring:
+  application:
+    name: cashflow
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:55432/cashflow}
+    username: ${DATABASE_USER:cashflow}
+    password: ${DATABASE_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_TLS:false}
+      mail.smtp.connectiontimeout: 3000
+      mail.smtp.timeout: 3000
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1MB
+management:
+  health:
+    mail:
+      enabled: ${SMTP_HEALTH_ENABLED:false}
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173}
+  mail-mode: ${MAIL_MODE:smtp}
+  mail-from: ${MAIL_FROM:hello@cashflow.local}
+  mail-directory: ${MAIL_DIRECTORY:../.local/mail}
+  ml-url: ${ML_URL:http://127.0.0.1:8001}
+  ml-key: ${ML_API_KEY}
+  google-client-id: ${GOOGLE_CLIENT_ID:}
+  google-client-secret: ${GOOGLE_CLIENT_SECRET:}
+  google-redirect-uri: ${GOOGLE_REDIRECT_URI:}
+  production: ${APP_PRODUCTION:false}
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
+logging:
+  level:
+    org.hibernate.engine.jdbc.spi.SqlExceptionHelper: OFF

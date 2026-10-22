@@ -1,0 +1,76 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useOutletContext } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight, Pencil, Plus, Repeat2, Trash2 } from "lucide-react";
+import { api } from "../lib/api";
+import { flowSchema, type FlowForm } from "../lib/schemas";
+import type { Flow, Rule, Page } from "../lib/types";
+import type { WorkspaceContext } from "./Business";
+import { addDays, dateLabel, money } from "../lib/utils";
+import { Button } from "../components/ui/button";
+import { Confirm, Empty, ErrorBox, Field, Loading, Modal, PageHeader } from "../components/Common";
+
+function FlowEditor({ flow, close, onSaved }: { flow?: Flow; close: () => void; onSaved: () => void }) {
+  const { business } = useOutletContext<WorkspaceContext>();
+  const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("/recurring-rules") });
+  const [ruleId, setRuleId] = useState(flow?.recurringRuleId ?? "");
+  const [occurrence, setOccurrence] = useState(flow?.occurrenceDate ?? "");
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<FlowForm>({ resolver: zodResolver(flowSchema), defaultValues: {
+    type: flow?.type ?? "INFLOW", amount: flow ? String(flow.amount) : "", description: flow?.description ?? "", category: flow?.category ?? "Client payments",
+    counterparty: flow?.counterparty ?? "", expectedDate: flow?.expectedDate ?? addDays(business.today, 1), status: flow?.status ?? "PLANNED", source: flow?.source ?? "SCHEDULED",
+  } });
+  const mutation = useMutation({ mutationFn: (v: FlowForm) => api<Flow>(flow ? `/cash-flows/${flow.id}` : "/cash-flows", flow ? "PATCH" : "POST", { ...v, amount: Number(v.amount), recurringRuleId: ruleId || null, occurrenceDate: ruleId ? occurrence : null }), onSuccess: onSaved });
+  const direction = watch("type");
+  return <Modal title={flow ? "Edit cash flow" : "Add a cash flow"} close={close}><form className="form-stack" onSubmit={handleSubmit(v => mutation.mutate(v))}>
+    <div className="form-grid"><Field label="Direction"><select {...register("type")}><option value="INFLOW">Money in</option><option value="OUTFLOW">Money out</option></select></Field><Field label="Amount (₹)" error={errors.amount?.message}><input {...register("amount")} inputMode="decimal" placeholder="0.00"/></Field></div>
+    <Field label="Description" error={errors.description?.message}><input {...register("description")} placeholder="e.g. Website project milestone"/></Field>
+    <div className="form-grid"><Field label="Category" error={errors.category?.message}><input {...register("category")} list="categories"/><datalist id="categories"><option>Client payments</option><option>Sales</option><option>Operations</option><option>Rent</option><option>Payroll</option><option>Equipment</option><option>Taxes</option></datalist></Field><Field label="Counterparty (optional)"><input {...register("counterparty")}/></Field></div>
+    <div className="form-grid"><Field label="Expected / settlement date" error={errors.expectedDate?.message}><input type="date" {...register("expectedDate")} min={business.openingDate}/></Field><Field label="Status"><select {...register("status")}><option value="PLANNED">Planned</option>{direction === "INFLOW" ? <option value="RECEIVED">Received</option> : <option value="PAID">Paid</option>}<option value="CANCELLED">Cancelled</option></select></Field></div>
+    <Field label="How this movement originated" hint="Only unplanned settled movements inform the estimated component. Mark previously scheduled receipts and payments as scheduled."><select {...register("source")}><option value="SCHEDULED">Scheduled / previously planned</option><option value="UNPLANNED">Unplanned and already settled</option></select></Field>
+    <details><summary>Replace a recurring occurrence</summary><p className="muted small">Link a receipt, payment, or cancellation to prevent counting the same recurring commitment twice. Deleting the linked entry restores the virtual occurrence.</p><Field label="Recurring rule"><select value={ruleId} onChange={e => setRuleId(e.target.value)}><option value="">No recurring rule</option>{rules.data?.map(r => <option key={r.id} value={r.id}>{r.description}</option>)}</select></Field>{ruleId && <Field label="Original occurrence date"><input type="date" value={occurrence} onChange={e => setOccurrence(e.target.value)} required/></Field>}</details>
+    <ErrorBox error={mutation.error}/><div className="actions"><Button type="button" variant="secondary" onClick={close}>Cancel</Button><Button disabled={mutation.isPending}>{mutation.isPending ? "Saving…" : "Save cash flow"}</Button></div>
+  </form></Modal>;
+}
+function RuleEditor({ rule, close, onSaved }: { rule?: Rule; close: () => void; onSaved: () => void }) {
+  const { business } = useOutletContext<WorkspaceContext>();
+  const [value, setValue] = useState({ type: rule?.type ?? "OUTFLOW", amount: String(rule?.amount ?? ""), description: rule?.description ?? "", category: rule?.category ?? "Operations", frequency: rule?.frequency ?? "MONTHLY", startDate: rule?.startDate ?? addDays(business.today, 1), endDate: rule?.endDate ?? "", active: rule?.active ?? true });
+  const mutation = useMutation({ mutationFn: () => api<Rule>(rule ? `/recurring-rules/${rule.id}` : "/recurring-rules", rule ? "PATCH" : "POST", { ...value, amount: Number(value.amount), endDate: value.endDate || null }), onSuccess: onSaved });
+  const update = (name: keyof typeof value, v: string | boolean) => setValue(s => ({ ...s, [name]: v }));
+  return <Modal title={rule ? "Edit recurring commitment" : "Add recurring commitment"} close={close}><form className="form-stack" onSubmit={e => { e.preventDefault(); mutation.mutate(); }}>
+    <Field label="Description"><input required maxLength={200} value={value.description} onChange={e => update("description", e.target.value)}/></Field>
+    <div className="form-grid"><Field label="Direction"><select value={value.type} onChange={e => update("type", e.target.value)}><option value="INFLOW">Money in</option><option value="OUTFLOW">Money out</option></select></Field><Field label="Amount (₹)"><input required type="number" min="0.01" max="999999999999.99" step="0.01" value={value.amount} onChange={e => update("amount", e.target.value)}/></Field></div>
+    <div className="form-grid"><Field label="Frequency"><select value={value.frequency} onChange={e => update("frequency", e.target.value)}><option value="MONTHLY">Monthly</option><option value="WEEKLY">Weekly</option></select></Field><Field label="Category"><input required maxLength={60} value={value.category} onChange={e => update("category", e.target.value)}/></Field></div>
+    <div className="form-grid"><Field label="First occurrence"><input required type="date" min={business.openingDate} value={value.startDate} onChange={e => update("startDate", e.target.value)}/></Field><Field label="End date (optional)"><input type="date" min={value.startDate} value={value.endDate} onChange={e => update("endDate", e.target.value)}/></Field></div>
+    <label className="checkbox-inline"><input type="checkbox" checked={value.active} onChange={e => update("active", e.target.checked)}/> Active commitment</label>
+    <p className="muted small">Monthly dates fall on the same day, or the last day of shorter months. Occurrences enter the forecast automatically and do not count as paid.</p><ErrorBox error={mutation.error}/><div className="actions"><Button type="button" variant="secondary" onClick={close}>Cancel</Button><Button disabled={mutation.isPending}>{mutation.isPending ? "Saving…" : "Save commitment"}</Button></div>
+  </form></Modal>;
+}
+export default function CashFlows() {
+  const client = useQueryClient();
+  const [tab, setTab] = useState<"entries" | "recurring">("entries"); const [page, setPage] = useState(0);
+  const [filters, setFilters] = useState({ from: "", to: "", type: "", status: "", category: "" });
+  const [editor, setEditor] = useState<Flow | "new" | null>(null); const [ruleEditor, setRuleEditor] = useState<Rule | "new" | null>(null);
+  const [deleting, setDeleting] = useState<{ id: string; description: string; rule: boolean } | null>(null);
+  const [notice, setNotice] = useState("");
+  const search = new URLSearchParams({ page: String(page), size: "10", ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
+  const query = useQuery({ queryKey: ["flows", search.toString()], queryFn: () => api<Page<Flow>>(`/cash-flows?${search}`) });
+  const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("/recurring-rules") });
+  const invalidate = async () => { await Promise.all(["flows", "rules", "business", "forecast"].map(key => client.invalidateQueries({ queryKey: [key] }))); };
+  const saved = () => { setEditor(null); setRuleEditor(null); setNotice("Saved. Refresh your forecast to include this change."); void invalidate(); };
+  const remove = useMutation({ mutationFn: () => api<void>(`/${deleting?.rule ? "recurring-rules" : "cash-flows"}/${deleting?.id}`, "DELETE"), onSuccess: () => { setDeleting(null); setNotice("Change saved. Previous forecasts remain available."); void invalidate(); } });
+  const filter = (name: keyof typeof filters, value: string) => { setFilters(s => ({ ...s, [name]: value })); setPage(0); };
+  return <>
+    <PageHeader eyebrow="THE FOUNDATION OF YOUR FORECAST" title="Every movement matters." action={<Button onClick={() => tab === "entries" ? setEditor("new") : setRuleEditor("new")}><Plus size={17}/>{tab === "entries" ? "Add cash flow" : "Add commitment"}</Button>}>Keep track of what’s arrived, what’s paid, and what’s still on the way.</PageHeader>
+    {notice && <div className="notice success" role="status">{notice}</div>}
+    <div className="tabs"><button className={tab === "entries" ? "active" : ""} onClick={() => setTab("entries")}>Cash flows</button><button className={tab === "recurring" ? "active" : ""} onClick={() => setTab("recurring")}><Repeat2 size={16}/> Recurring commitments</button></div>
+    {tab === "entries" ? <section className="card table-card"><div className="filters"><Field label="From"><input type="date" value={filters.from} onChange={e => filter("from", e.target.value)}/></Field><Field label="To"><input type="date" value={filters.to} onChange={e => filter("to", e.target.value)}/></Field><Field label="Direction"><select value={filters.type} onChange={e => filter("type", e.target.value)}><option value="">All directions</option><option value="INFLOW">Money in</option><option value="OUTFLOW">Money out</option></select></Field><Field label="Status"><select value={filters.status} onChange={e => filter("status", e.target.value)}><option value="">All statuses</option>{["PLANNED", "RECEIVED", "PAID", "CANCELLED"].map(s => <option key={s}>{s}</option>)}</select></Field><Field label="Category"><input placeholder="Exact category" value={filters.category} onChange={e => filter("category", e.target.value)}/></Field></div>
+      {query.isPending ? <Loading/> : query.error ? <ErrorBox error={query.error} retry={() => void query.refetch()}/> : !query.data?.items.length ? <Empty title="A clean slate.">No cash flows match this view. Add an entry or adjust your filters.</Empty> : <div className="table-scroll"><table><thead><tr><th>Transaction</th><th>Date</th><th>Category</th><th>Status</th><th>Amount</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{query.data.items.map(f => <tr key={f.id}><td><div className="transaction-name"><span className={`flow-icon ${f.type === "INFLOW" ? "inflow" : "outflow"}`}>{f.type === "INFLOW" ? <ArrowDownLeft size={16}/> : <ArrowUpRight size={16}/>}</span><div><strong>{f.description}</strong><small>{f.counterparty || (f.source === "UNPLANNED" ? "Unplanned actual" : "Scheduled")}</small></div></div></td><td>{dateLabel(f.expectedDate)}</td><td>{f.category}</td><td><span className={`badge status-${f.status.toLowerCase()}`}>{f.status.toLowerCase()}</span></td><td className={f.type === "INFLOW" ? "inflow" : ""}><strong>{f.type === "INFLOW" ? "+" : "−"}{money(f.amount)}</strong></td><td><div className="row-actions"><Button variant="ghost" size="small" aria-label={`Edit ${f.description}`} onClick={() => setEditor(f)}><Pencil size={15}/></Button><Button variant="ghost" size="small" aria-label={`Delete ${f.description}`} onClick={() => { remove.reset(); setDeleting({ ...f, rule: false }); }}><Trash2 size={15}/></Button></div></td></tr>)}</tbody></table></div>}
+      <div className="pagination"><span>{query.data?.totalElements ?? 0} entries · Page {page + 1} of {Math.max(1, query.data?.totalPages ?? 0)}</span><div className="actions"><Button variant="secondary" size="small" disabled={page === 0} onClick={() => setPage(p => p - 1)} aria-label="Previous page"><ChevronLeft size={16}/></Button><Button variant="secondary" size="small" disabled={page + 1 >= (query.data?.totalPages ?? 0)} onClick={() => setPage(p => p + 1)} aria-label="Next page"><ChevronRight size={16}/></Button></div></div>
+    </section> : <section className="card"><p className="muted">Recurring rules create virtual forecast occurrences. Record settled or cancelled occurrences using the “Replace a recurring occurrence” option.</p>{rules.isPending ? <Loading/> : rules.error ? <ErrorBox error={rules.error}/> : !rules.data?.length ? <Empty title="Make the regular things automatic.">Add rent, retainers, or other weekly and monthly commitments.</Empty> : <div className="table-scroll"><table><thead><tr><th>Commitment</th><th>Frequency</th><th>First date</th><th>Amount</th><th>State</th><th>Actions</th></tr></thead><tbody>{rules.data.map(r => <tr key={r.id}><td><strong>{r.description}</strong><small>{r.type.toLowerCase()} · {r.category}</small></td><td>{r.frequency.toLowerCase()}</td><td>{dateLabel(r.startDate)}</td><td>{money(r.amount)}</td><td><span className="badge">{r.active ? "Active" : "Inactive"}</span></td><td><div className="row-actions"><Button size="small" variant="ghost" aria-label={`Edit ${r.description}`} onClick={() => setRuleEditor(r)}><Pencil size={15}/></Button>{r.active && <Button size="small" variant="ghost" aria-label={`Deactivate ${r.description}`} onClick={() => { remove.reset(); setDeleting({ ...r, rule: true }); }}><Trash2 size={15}/></Button>}</div></td></tr>)}</tbody></table></div>}</section>}
+    {editor && <FlowEditor flow={editor === "new" ? undefined : editor} close={() => setEditor(null)} onSaved={saved}/>}
+    {ruleEditor && <RuleEditor rule={ruleEditor === "new" ? undefined : ruleEditor} close={() => setRuleEditor(null)} onSaved={saved}/>}
+    {deleting && <Confirm title={deleting.rule ? "Deactivate this commitment?" : "Delete this cash flow?"} close={() => setDeleting(null)} confirm={() => remove.mutate()} pending={remove.isPending} error={remove.error}>{deleting.description}. {deleting.rule ? "Future virtual occurrences will be excluded. Recorded entries remain." : "Current cash and new forecasts will reflect this deletion. Existing forecast snapshots stay unchanged."}</Confirm>}
+  </>;
+}
